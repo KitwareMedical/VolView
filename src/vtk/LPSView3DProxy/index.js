@@ -1,9 +1,28 @@
 import { vec3 } from 'gl-matrix';
 import macro from '@kitware/vtk.js/macro';
 import vtkViewProxy from '@kitware/vtk.js/Proxy/Core/ViewProxy';
+import vtkOffscreenRenderWindowInteractor from '@/src/vtk/vtkOffscreenRenderWindowInteractor';
+
+export function replaceInteractor(publicAPI, model) {
+  // prep to remove the old interactor
+  const style = model.interactor.getInteractorStyle();
+  const orientationWidgetEnabled = model.orientationWidget.getEnabled();
+  model.orientationWidget.setEnabled(false);
+
+  // delete the old interactor in favor of the new one
+  model.interactor.delete();
+
+  model.interactor = vtkOffscreenRenderWindowInteractor.newInstance();
+  model.interactor.setView(model._openGLRenderWindow);
+  model.interactor.setInteractorStyle(style);
+  model.orientationWidget.setInteractor(model.interactor);
+  model.orientationWidget.setEnabled(orientationWidgetEnabled);
+}
 
 export function commonViewCustomizations(publicAPI, model) {
   const delayedRender = macro.debounce(model.renderWindow.render, 5);
+
+  replaceInteractor(publicAPI, model);
 
   // override resize to avoid flickering from rendering later
   publicAPI.resize = () => {
@@ -68,6 +87,33 @@ export function commonViewCustomizations(publicAPI, model) {
     resetCamera(args);
     model.renderer.updateLightsGeometryToFollowCamera();
   };
+
+  publicAPI.setSize = (width, height) => {
+    const container = publicAPI.getContainer();
+    if (!container) throw new Error('No container');
+    setTimeout(() => {
+      container.style.width = `${width}px`;
+      container.style.height = `${height}px`;
+      publicAPI.resize();
+    }, 0);
+  };
+
+  publicAPI.setInteractionContainer = (el) => {
+    return model.interactor.setInteractionContainer(el);
+  };
+
+  publicAPI.getInteractionContainer = () => {
+    return model.interactor.getInteractionContainer();
+  };
+
+  // initialize
+
+  const container = document.createElement('div');
+  container.style.display = 'block';
+  container.style.visibility = 'hidden';
+  container.style.position = 'absolute';
+  document.body.appendChild(container);
+  publicAPI.setContainer(container);
 }
 
 function vtkLPSView3DProxy(publicAPI, model) {

@@ -6,7 +6,9 @@
           class="vtk-view"
           ref="vtkContainerRef"
           data-testid="vtk-view vtk-three-view"
-        />
+        >
+          <canvas ref="canvasRef" class="ccc" />
+        </div>
       </div>
       <div class="overlay-no-events tool-layer">
         <crop-tool :view-id="viewID" />
@@ -77,6 +79,7 @@ import type { Vector3 } from '@kitware/vtk.js/types';
 
 import { useProxyManager } from '@/src/composables/proxyManager';
 import ViewOverlayGrid from '@/src/components/ViewOverlayGrid.vue';
+import { onVTKEvent } from '@/src/composables/onVTKEvent';
 import { useResizeObserver } from '../composables/useResizeObserver';
 import { useCurrentImage } from '../composables/useCurrentImage';
 import { useCameraOrientation } from '../composables/useCameraOrientation';
@@ -428,22 +431,51 @@ export default defineComponent({
 
     // --- view proxy setup --- //
 
-    const { viewProxy, setContainer: setViewProxyContainer } =
-      useViewProxy<vtkLPSView3DProxy>(viewID, ViewProxyType.Volume);
+    const { viewProxy } = useViewProxy<vtkLPSView3DProxy>(
+      viewID,
+      ViewProxyType.Volume
+    );
+
+    const canvasRef = ref<HTMLCanvasElement | null>(null);
+
+    const interactor = computed(() => viewProxy.value.getInteractor());
+    onVTKEvent(interactor, 'onRenderEvent' as 'onModified', () => {
+      if (!canvasRef.value) return;
+      const ctx = canvasRef.value.getContext('2d');
+      const src = viewProxy.value.getOpenGLRenderWindow().getCanvas();
+      if (ctx && src) {
+        ctx.clearRect(0, 0, canvasRef.value.width, canvasRef.value.height);
+        ctx.drawImage(src, 0, 0);
+      }
+    });
 
     onMounted(() => {
       viewProxy.value.setOrientationAxesVisibility(true);
       viewProxy.value.setOrientationAxesType('cube');
       viewProxy.value.setBackground([0, 0, 0, 0]);
-      setViewProxyContainer(vtkContainerRef.value);
+      viewProxy.value.setInteractionContainer(canvasRef.value);
+      // setViewProxyContainer(vtkContainerRef.value);
     });
 
     onBeforeUnmount(() => {
-      setViewProxyContainer(null);
-      viewProxy.value.setContainer(null);
+      // setViewProxyContainer(null);
     });
 
-    useResizeObserver(vtkContainerRef, () => viewProxy.value.resize());
+    useResizeObserver(vtkContainerRef, (entry) => {
+      const bbox = entry.contentRect;
+      if (!bbox.width || !bbox.height) return;
+
+      canvasRef.value?.setAttribute(
+        'width',
+        String(bbox.width * window.devicePixelRatio)
+      );
+      canvasRef.value?.setAttribute(
+        'height',
+        String(bbox.height * window.devicePixelRatio)
+      );
+
+      viewProxy.value.setSize(bbox.width, bbox.height);
+    });
 
     // --- scene setup --- //
 
@@ -607,6 +639,7 @@ export default defineComponent({
 
     return {
       vtkContainerRef,
+      canvasRef,
       viewID,
       active: false,
       topLeftLabel: computed(
@@ -628,5 +661,10 @@ export default defineComponent({
 .vtk-three-container {
   background-color: black;
   grid-template-columns: auto;
+}
+
+.ccc {
+  width: 100%;
+  height: 100%;
 }
 </style>
