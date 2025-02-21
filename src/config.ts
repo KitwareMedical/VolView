@@ -287,6 +287,9 @@ export const ACTION_TO_KEY = {
   decrementLabel: 'q',
   incrementLabel: 'w',
 
+  deleteCurrentImage: 'ctrl+d',
+  clearScene: 'ctrl+w',
+
   showKeyboardShortcuts: '?',
 } satisfies Record<Action, string>;
 
